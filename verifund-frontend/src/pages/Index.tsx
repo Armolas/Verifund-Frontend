@@ -74,7 +74,7 @@ const Index = () => {
                 </Button>
               </Link>
               <Link to="/create">
-                <Button className="btn-secondary text-lg px-8 py-4">
+                <Button variant="outline" className="btn-secondary text-lg px-8 py-4">
                   Create Campaign
                 </Button>
               </Link>
@@ -150,7 +150,7 @@ const Index = () => {
               </p>
             </div>
             <Link to="/campaigns">
-              <Button className="btn-secondary">
+              <Button variant="outline" className="btn-secondary">
                 View All Campaigns
                 <ArrowRight className="ml-2 w-4 h-4" />
               </Button>
@@ -183,7 +183,7 @@ const Index = () => {
                 </Button>
               </Link>
               <Link to="/campaigns">
-                <Button className="btn-secondary">
+                <Button variant="outline" className="btn-secondary">
                   Back a Project
                 </Button>
               </Link>

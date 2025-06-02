@@ -50,7 +50,7 @@ const CampaignCard = ({
       <Card className="glass-card hover:shadow-xl transition-all duration-300 h-full group">
         <CardHeader className="pb-3">
           <div className="flex justify-between items-start mb-2">
-            <Badge className="text-verifund-sage border-verifund-sage">
+            <Badge variant="outline" className="text-verifund-sage border-verifund-sage">
               {category}
             </Badge>
             {getStatusBadge()}

@@ -31,7 +31,7 @@ const Navbar = () => {
           </div>
 
           <div className="hidden md:flex items-center space-x-4">
-            <Button className="btn-secondary">
+            <Button variant="outline" size="sm" className="btn-secondary">
               <Wallet className="w-4 h-4 mr-2" />
               Connect Wallet
             </Button>
@@ -57,7 +57,7 @@ const Navbar = () => {
               <Link to="/create" className="text-verifund-forest-dark hover:text-verifund-sage transition-colors">
                 Create
               </Link>
-              <Button className="btn-secondary w-fit">
+              <Button variant="outline" size="sm" className="btn-secondary w-fit">
                 <Wallet className="w-4 h-4 mr-2" />
                 Connect Wallet
               </Button>
