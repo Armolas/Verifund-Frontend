@@ -10,6 +10,7 @@ import CreateCampaign from "./pages/CreateCampaign";
 import CampaignList from "./pages/CampaignList";
 import NotFound from "./pages/NotFound";
 import CampaignDetails from "./pages/CampaignDetails";
+import Settings from "./pages/Settings";
 const queryClient = new QueryClient();
 
 const App = () => (
@@ -24,6 +25,8 @@ const App = () => (
           <Route path="/create" element={<CreateCampaign />} />
           <Route path="/campaigns" element={<CampaignList />} />
           <Route path="/campaign/:id" element={<CampaignDetails />} />
+          <Route path="/settings" element={<Settings />} />
+          
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
