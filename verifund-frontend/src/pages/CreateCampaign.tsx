@@ -18,6 +18,8 @@ import {
 } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import { Link } from "react-router-dom";
+import { useContract } from '../hooks/use-contract';
+import { Cl } from '@stacks/transactions';
 
 interface MilestoneData {
   id: string;
@@ -47,6 +49,8 @@ const CreateCampaign = () => {
     "Technology", "Environment", "Education", "Healthcare", 
     "Art", "Social", "Research", "Gaming", "Other"
   ];
+
+  const { callContract } = useContract();
 
   const addMilestone = () => {
     const newMilestone: MilestoneData = {
@@ -95,7 +99,28 @@ const CreateCampaign = () => {
 
   const handleSubmit = () => {
     console.log("Submitting campaign:", campaignData);
-    // Handle campaign submission logic
+    const milestones = Cl.list(
+      campaignData.milestones.map(milestone =>
+        Cl.tuple({
+          name: Cl.stringAscii(milestone.title),
+          amount: Cl.uint(milestone.amount)
+        })
+      )
+    )
+    const response = callContract(
+      {
+        functionName: 'create_campaign',
+        functionArgs: [
+          Cl.stringAscii(campaignData.title),
+          Cl.stringAscii(campaignData.description),
+          Cl.uint(campaignData.goal),
+          milestones,
+          Cl.some(Cl.stringAscii(campaignData.proposalLink))
+        ]
+      }
+    )
+
+    console.log(`Transaction submitted: ${response}`);
   };
 
   return (
