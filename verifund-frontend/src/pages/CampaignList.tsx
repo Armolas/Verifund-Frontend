@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -6,14 +6,80 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Search, Filter, SlidersHorizontal } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import CampaignCard from "@/components/CampaignCard";
+import { useContract } from "../hooks/use-contract";
+import { Cl, cvToValue } from '@stacks/transactions';
 
 const CampaignList = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [selectedStatus, setSelectedStatus] = useState("all");
   const [sortBy, setSortBy] = useState("newest");
+  const [campaigns, setCampaigns] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const { readContract } = useContract();
 
-  const campaigns = [
+  // Load campaigns from blockchain
+  useEffect(() => {
+    const loadCampaigns = async () => {
+      try {
+        setLoading(true);
+        
+        // Get total campaign count first
+        const countResult = await readContract('get_campaign_count');
+        const totalCampaigns = cvToValue(countResult);
+        
+        console.log('Total campaigns:', totalCampaigns);
+        
+        // Load each campaign
+        const campaignPromises = [];
+        for (let i = 0; i < totalCampaigns; i++) {
+          campaignPromises.push(
+            readContract('get_campaign', [Cl.uint(i)])
+              .then(result => {
+                if (result.type === 'ok') {
+                  const campaignData = cvToValue(result.value);
+                  // Transform contract data to match frontend expectations
+                  return {
+                    id: i.toString(),
+                    title: campaignData.name,
+                    description: campaignData.description,
+                    goal: campaignData.goal / 1000000, // Convert from microSTX
+                    raised: campaignData.amount_raised / 1000000,
+                    backers: 0, // Would need separate contract call to get this
+                    milestonesCount: campaignData.milestones.length,
+                    completedMilestones: campaignData.milestones.filter(m => m.status === 'completed').length,
+                    category: campaignData.category,
+                    endDate: campaignData.status === 'completed' ? 'Completed' : 'Active',
+                    status: campaignData.status === 'funding' ? 'funding' : campaignData.status
+                  };
+                }
+                return null;
+              })
+              .catch(err => {
+                console.error(`Error loading campaign ${i}:`, err);
+                return null;
+              })
+          );
+        }
+        
+        const loadedCampaigns = await Promise.all(campaignPromises);
+        const validCampaigns = loadedCampaigns.filter(campaign => campaign !== null);
+        
+        console.log('Loaded campaigns:', validCampaigns);
+        setCampaigns(validCampaigns);
+      } catch (error) {
+        console.error('Error loading campaigns:', error);
+        // Fallback to mock data on error
+        setCampaigns(mockCampaigns);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadCampaigns();
+  }, [readContract]);
+
+  const mockCampaigns = [
     {
       id: "1",
       title: "Decentralized Social Media Platform",
@@ -94,10 +160,12 @@ const CampaignList = () => {
     }
   ];
 
+  const displayCampaigns = campaigns.length > 0 ? campaigns : mockCampaigns;
+
   const categories = ["all", "Technology", "Environment", "Education", "Healthcare", "Art", "Social"];
   const statuses = ["all", "funding", "milestone-voting", "completed"];
 
-  const filteredCampaigns = campaigns.filter(campaign => {
+  const filteredCampaigns = displayCampaigns.filter(campaign => {
     const matchesSearch = campaign.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          campaign.description.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCategory = selectedCategory === "all" || campaign.category === selectedCategory;
@@ -175,7 +243,8 @@ const CampaignList = () => {
 
               <div className="flex justify-between items-center mt-4 pt-4 border-t border-verifund-accent-dark/30">
                 <p className="text-verifund-neutral-gray">
-                  Showing {filteredCampaigns.length} of {campaigns.length} campaigns
+                  Showing {filteredCampaigns.length} of {displayCampaigns.length} campaigns
+                  {loading && ' (Loading...)'}
                 </p>
                 <Button variant="outline" size="sm" className="btn-secondary">
                   <SlidersHorizontal className="w-4 h-4 mr-2" />
@@ -186,7 +255,11 @@ const CampaignList = () => {
           </Card>
 
           {/* Campaign Grid */}
-          {filteredCampaigns.length > 0 ? (
+          {loading ? (
+            <div className="text-center py-12">
+              <div className="text-verifund-light-accent text-xl">Loading campaigns...</div>
+            </div>
+          ) : filteredCampaigns.length > 0 ? (
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
               {filteredCampaigns.map((campaign, index) => (
                 <div key={campaign.id} className="animate-slide-up" style={{ animationDelay: `${index * 0.1}s` }}>
