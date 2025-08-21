@@ -11,9 +11,9 @@ interface CallContractParams {
     functionArgs?: ClarityValue[];
 }
 
-const contract = 'ST385T9YTJR9TV4F6A6AGPRTZ1M7S5GB5JNDT4M8X.verifund';
+const contract = 'ST385T9YTJR9TV4F6A6AGPRTZ1M7S5GB5JNDT4M8X.verifund2';
 const contractAddress = 'ST385T9YTJR9TV4F6A6AGPRTZ1M7S5GB5JNDT4M8X';
-const contractName = 'verifund';
+const contractName = 'verifund2';
 const network = STACKS_TESTNET;
 
 export function useContract() {
@@ -27,6 +27,7 @@ export function useContract() {
                     functionName,
                     functionArgs,
                     network: "testnet",
+                    postConditionMode: "allow"
                 });
 
                 console.log('Transaction ID:', response);
