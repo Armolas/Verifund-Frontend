@@ -38,8 +38,60 @@ const CampaignDetails = () => {
         const campaignResult = await readContract('get_campaign', [Cl.uint(parseInt(id))]);
         
         if (campaignResult.type === 'ok') {
-          const campaignData = cvToValue(campaignResult.value);
-          console.log('Campaign data:', campaignData);
+          const rawCampaignData = cvToValue(campaignResult.value);
+          console.log('Raw campaign data:', rawCampaignData);
+          
+          // Safely extract string values, handling potential Clarity objects
+          const extractString = (value: any) => {
+            if (typeof value === 'string') return value;
+            if (value && typeof value === 'object') {
+              if (value.type === 'buffer') {
+                return new TextDecoder().decode(new Uint8Array(value.value));
+              }
+              if (value.type === 'ascii' || value.type === 'utf8') {
+                return value.data || value.value || '';
+              }
+              if (value.type === 'uint' || value.type === 'int') {
+                return String(value.value || 0);
+              }
+              // For any other object, try to extract a meaningful value
+              if (value.value !== undefined) {
+                return String(value.value);
+              }
+              if (value.data !== undefined) {
+                return String(value.data);
+              }
+            }
+            return String(value || '');
+          };
+          
+          const extractNumber = (value: any) => {
+            if (typeof value === 'number') return value;
+            if (typeof value === 'bigint') return Number(value);
+            if (value && typeof value === 'object' && value.type === 'uint') {
+              return Number(value.value);
+            }
+            return Number(value) || 0;
+          };
+          
+          // Transform contract data to match frontend expectations
+          const campaignData = {
+            id: id,
+            name: extractString(rawCampaignData.name),
+            title: extractString(rawCampaignData.name),
+            description: extractString(rawCampaignData.description),
+            goal: extractNumber(rawCampaignData.goal),
+            amount_raised: extractNumber(rawCampaignData.amount_raised),
+            raised: extractNumber(rawCampaignData.amount_raised),
+            status: extractString(rawCampaignData.status),
+            category: extractString(rawCampaignData.category),
+            owner: extractString(rawCampaignData.owner),
+            proposal_link: extractString(rawCampaignData.proposal_link),
+            milestones: Array.isArray(rawCampaignData.milestones) ? rawCampaignData.milestones : [],
+            backers: 0 // Would need separate contract call
+          };
+          
+          console.log('Processed campaign data:', campaignData);
           setCampaign(campaignData);
         } else {
           setError('Campaign not found');
@@ -313,7 +365,7 @@ const CampaignDetails = () => {
                 </TabsList>
 
                 <TabsContent value="milestones" className="space-y-4">
-                  {(displayCampaign.milestones || []).map((milestone, index) => (
+                  {(Array.isArray(displayCampaign.milestones) ? displayCampaign.milestones : []).map((milestone: any, index: number) => (
                     <Card key={milestone.id} className="glass-card">
                       <CardHeader>
                         <div className="flex items-center justify-between">
@@ -466,7 +518,7 @@ const CampaignDetails = () => {
                       ${((displayCampaign.amount_raised || displayCampaign.raised || 0) / 1000000).toLocaleString()} STX
                     </h3>
                     <p className="text-verifund-neutral-gray">
-                      raised of ${(displayCampaign.goal / 1000000).toLocaleString()} STX goal
+                      raised of ${(displayCampaign.goal).toLocaleString()} STX goal
                     </p>
                   </div>
                   
