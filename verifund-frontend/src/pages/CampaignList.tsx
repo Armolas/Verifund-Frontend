@@ -38,19 +38,56 @@ const CampaignList = () => {
               .then(result => {
                 if (result.type === 'ok') {
                   const campaignData = cvToValue(result.value);
+                  console.log(`Campaign ${i} data:`, campaignData);
+                  console.log(`Campaign ${i} name:`, campaignData.name);
+                  console.log(`Campaign ${i} description:`, campaignData.description);
+                  
+                  // Safely extract string values, handling potential Clarity objects
+                  const extractString = (value: any) => {
+                    if (typeof value === 'string') return value;
+                    if (value && typeof value === 'object') {
+                      if (value.type === 'buffer') {
+                        return new TextDecoder().decode(new Uint8Array(value.value));
+                      }
+                      if (value.type === 'ascii' || value.type === 'utf8') {
+                        return value.data || value.value || '';
+                      }
+                      if (value.type === 'uint' || value.type === 'int') {
+                        return String(value.value || 0);
+                      }
+                      // For any other object, try to extract a meaningful value
+                      if (value.value !== undefined) {
+                        return String(value.value);
+                      }
+                      if (value.data !== undefined) {
+                        return String(value.data);
+                      }
+                    }
+                    return String(value || '');
+                  };
+                  
+                  const extractNumber = (value: any) => {
+                    if (typeof value === 'number') return value;
+                    if (typeof value === 'bigint') return Number(value);
+                    if (value && typeof value === 'object' && value.type === 'uint') {
+                      return Number(value.value);
+                    }
+                    return Number(value) || 0;
+                  };
+                  
                   // Transform contract data to match frontend expectations
                   return {
                     id: i.toString(),
-                    title: campaignData.name,
-                    description: campaignData.description,
-                    goal: campaignData.goal / 1000000, // Convert from microSTX
-                    raised: campaignData.amount_raised / 1000000,
+                    title: extractString(campaignData.name),
+                    description: extractString(campaignData.description),
+                    goal: extractNumber(campaignData.goal),
+                    raised: extractNumber(campaignData.amount_raised) / 1000000,
                     backers: 0, // Would need separate contract call to get this
-                    milestonesCount: campaignData.milestones.length,
-                    completedMilestones: campaignData.milestones.filter(m => m.status === 'completed').length,
-                    category: campaignData.category,
+                    milestonesCount: Array.isArray(campaignData.milestones) ? campaignData.milestones.length : 0,
+                    completedMilestones: Array.isArray(campaignData.milestones) ? campaignData.milestones.filter((m: any) => m.status === 'completed').length : 0,
+                    category: extractString(campaignData.category),
                     endDate: campaignData.status === 'completed' ? 'Completed' : 'Active',
-                    status: campaignData.status === 'funding' ? 'funding' : campaignData.status
+                    status: extractString(campaignData.status) === 'funding' ? 'funding' : extractString(campaignData.status)
                   };
                 }
                 return null;
@@ -166,8 +203,10 @@ const CampaignList = () => {
   const statuses = ["all", "funding", "milestone-voting", "completed"];
 
   const filteredCampaigns = displayCampaigns.filter(campaign => {
-    const matchesSearch = campaign.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         campaign.description.toLowerCase().includes(searchTerm.toLowerCase());
+    const title = typeof campaign.title === 'string' ? campaign.title : '';
+    const description = typeof campaign.description === 'string' ? campaign.description : '';
+    const matchesSearch = title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         description.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCategory = selectedCategory === "all" || campaign.category === selectedCategory;
     const matchesStatus = selectedStatus === "all" || campaign.status === selectedStatus;
     
