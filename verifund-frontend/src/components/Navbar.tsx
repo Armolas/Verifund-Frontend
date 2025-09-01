@@ -1,11 +1,58 @@
 
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Wallet, Menu } from "lucide-react";
-import { useState } from "react";
+import { Wallet, Menu, ChevronDown } from "lucide-react";
+import { useEffect, useState } from "react";
+import { connect, isConnected, getLocalStorage, disconnect } from '@stacks/connect';
 
 const Navbar = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [authenticated, setAuthenticated] = useState(isConnected());
+  const [stxAddress, setStxAddress] = useState<string | null>(null);
+  const [btcAddress, setBtcAddress] = useState<string | null>(null);
+
+  const connectWallet = async () => {
+    try {
+      if (isConnected()) {
+        console.log('Already connected');
+        return;
+      }
+
+      const response = await connect();
+      if (response) {
+        console.log('Connected:', response);
+        setAuthenticated(true);
+        const userData = getLocalStorage();
+        if (userData?.addresses?.stx?.length > 0) {
+          setStxAddress(userData.addresses.stx[0].address);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to connect wallet:', error);
+    }
+  };
+
+  const handleDisconnect = () => {
+    disconnect();
+    setAuthenticated(false);
+    setStxAddress(null);
+    setBtcAddress(null);
+    setIsDropdownOpen(false);
+  };
+
+  useEffect(() => {
+    if (isConnected()) {
+      const userData = getLocalStorage();
+      setAuthenticated(true);
+      if (userData?.addresses?.stx?.length > 0) {
+        setStxAddress(userData.addresses.stx[0].address);
+      }
+      if (userData?.addresses?.btc?.length > 0) {
+        setBtcAddress(userData.addresses.btc[0].address);
+      }
+    }
+  }, []);
 
   return (
     <nav className="fixed top-0 w-full z-50 glass-card border-b border-verifund-sage/30">
@@ -31,10 +78,37 @@ const Navbar = () => {
           </div>
 
           <div className="hidden md:flex items-center space-x-4">
-            <Button variant="outline" size="sm" className="btn-secondary">
-              <Wallet className="w-4 h-4 mr-2" />
-              Connect Wallet
-            </Button>
+            {authenticated && stxAddress ? (
+              <div className="relative">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="btn-secondary"
+                  onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                >
+                  <Wallet className="w-4 h-4 mr-2" />
+                  {stxAddress.slice(0, 6) + "..." + stxAddress.slice(-4)}
+                  <ChevronDown className="w-4 h-4 ml-2" />
+                </Button>
+                {isDropdownOpen && (
+                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg z-50 border border-verifund-sage/30">
+                    <div className="py-1">
+                      <button
+                        onClick={handleDisconnect}
+                        className="block w-full text-left px-4 py-2 text-sm text-verifund-forest-dark hover:bg-verifund-sage/10 transition-colors"
+                      >
+                        Disconnect Wallet
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <Button variant="outline" size="sm" className="btn-secondary" onClick={connectWallet}>
+                <Wallet className="w-4 h-4 mr-2" />
+                Connect Wallet
+              </Button>
+            )}
           </div>
 
           <button
@@ -57,10 +131,37 @@ const Navbar = () => {
               <Link to="/create" className="text-verifund-forest-dark hover:text-verifund-sage transition-colors">
                 Create
               </Link>
-              <Button variant="outline" size="sm" className="btn-secondary w-fit">
-                <Wallet className="w-4 h-4 mr-2" />
-                Connect Wallet
-              </Button>
+              {authenticated && stxAddress ? (
+                <div className="relative">
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="btn-secondary w-fit"
+                    onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                  >
+                    <Wallet className="w-4 h-4 mr-2" />
+                    {stxAddress.slice(0, 6) + "..." + stxAddress.slice(-4)}
+                    <ChevronDown className="w-4 h-4 ml-2" />
+                  </Button>
+                  {isDropdownOpen && (
+                    <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg z-50 border border-verifund-sage/30">
+                      <div className="py-1">
+                        <button
+                          onClick={handleDisconnect}
+                          className="block w-full text-left px-4 py-2 text-sm text-verifund-forest-dark hover:bg-verifund-sage/10 transition-colors"
+                        >
+                          Disconnect Wallet
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <Button variant="outline" size="sm" className="btn-secondary w-fit" onClick={connectWallet}>
+                  <Wallet className="w-4 h-4 mr-2" />
+                  Connect Wallet
+                </Button>
+              )}
             </div>
           </div>
         )}

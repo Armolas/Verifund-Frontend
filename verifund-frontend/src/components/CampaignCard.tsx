@@ -32,7 +32,7 @@ const CampaignCard = ({
   endDate,
   status
 }: CampaignCardProps) => {
-  const progressPercentage = (raised / goal) * 100;
+  const progressPercentage = ((raised / 1000000) / goal) * 100;
 
   const getStatusBadge = () => {
     switch (status) {
