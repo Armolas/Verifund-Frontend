@@ -10,7 +10,7 @@ const Navbar = () => {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [authenticated, setAuthenticated] = useState(isConnected());
   const [stxAddress, setStxAddress] = useState<string | null>(null);
-  const [btcAddress, setBtcAddress] = useState<string | null>(null);
+  const [, setBtcAddress] = useState<string | null>(null);
 
   const connectWallet = async () => {
     try {

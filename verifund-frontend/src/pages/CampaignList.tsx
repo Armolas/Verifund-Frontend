@@ -7,7 +7,7 @@ import { Search, Filter, SlidersHorizontal } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import CampaignCard from "@/components/CampaignCard";
 import { useContract } from "../hooks/use-contract";
-import { Cl, cvToValue } from '@stacks/transactions';
+import { microStxToStx } from "@/lib/contract-utils";
 
 const CampaignList = () => {
   const [searchTerm, setSearchTerm] = useState("");
@@ -16,7 +16,7 @@ const CampaignList = () => {
   const [sortBy, setSortBy] = useState("newest");
   const [campaigns, setCampaigns] = useState([]);
   const [loading, setLoading] = useState(true);
-  const { readContract } = useContract();
+  const { getCampaignCount, getCampaign, getCampaignFunders, getCampaignProgress } = useContract();
 
   // Load campaigns from blockchain
   useEffect(() => {
@@ -25,72 +25,39 @@ const CampaignList = () => {
         setLoading(true);
         
         // Get total campaign count first
-        const countResult = await readContract('get_campaign_count');
-        const totalCampaigns = cvToValue(countResult);
-        
+        const totalCampaigns = await getCampaignCount();
+
         console.log('Total campaigns:', totalCampaigns);
-        
-        // Load each campaign
+
+        // Load each campaign using our hook's helper functions
         const campaignPromises = [];
         for (let i = 0; i < totalCampaigns; i++) {
           campaignPromises.push(
-            readContract('get_campaign', [Cl.uint(i)])
-              .then(result => {
-                if (result.type === 'ok') {
-                  const campaignData = cvToValue(result.value);
-                  console.log(`Campaign ${i} data:`, campaignData);
-                  console.log(`Campaign ${i} name:`, campaignData.name);
-                  console.log(`Campaign ${i} description:`, campaignData.description);
-                  
-                  // Safely extract string values, handling potential Clarity objects
-                  const extractString = (value: any) => {
-                    if (typeof value === 'string') return value;
-                    if (value && typeof value === 'object') {
-                      if (value.type === 'buffer') {
-                        return new TextDecoder().decode(new Uint8Array(value.value));
-                      }
-                      if (value.type === 'ascii' || value.type === 'utf8') {
-                        return value.data || value.value || '';
-                      }
-                      if (value.type === 'uint' || value.type === 'int') {
-                        return String(value.value || 0);
-                      }
-                      // For any other object, try to extract a meaningful value
-                      if (value.value !== undefined) {
-                        return String(value.value);
-                      }
-                      if (value.data !== undefined) {
-                        return String(value.data);
-                      }
-                    }
-                    return String(value || '');
-                  };
-                  
-                  const extractNumber = (value: any) => {
-                    if (typeof value === 'number') return value;
-                    if (typeof value === 'bigint') return Number(value);
-                    if (value && typeof value === 'object' && value.type === 'uint') {
-                      return Number(value.value);
-                    }
-                    return Number(value) || 0;
-                  };
-                  
-                  // Transform contract data to match frontend expectations
-                  return {
-                    id: i.toString(),
-                    title: extractString(campaignData.name),
-                    description: extractString(campaignData.description),
-                    goal: extractNumber(campaignData.goal),
-                    raised: extractNumber(campaignData.amount_raised) / 1000000,
-                    backers: 0, // Would need separate contract call to get this
-                    milestonesCount: Array.isArray(campaignData.milestones) ? campaignData.milestones.length : 0,
-                    completedMilestones: Array.isArray(campaignData.milestones) ? campaignData.milestones.filter((m: any) => m.status === 'completed').length : 0,
-                    category: extractString(campaignData.category),
-                    endDate: campaignData.status === 'completed' ? 'Completed' : 'Active',
-                    status: extractString(campaignData.status) === 'funding' ? 'funding' : extractString(campaignData.status)
-                  };
-                }
-                return null;
+            getCampaign(i)
+              .then(async campaign => {
+                console.log(`Campaign ${i} data:`, campaign);
+
+                // Get additional data for display
+                const [funders, progress] = await Promise.all([
+                  getCampaignFunders(i).catch(() => []),
+                  getCampaignProgress(i).catch(() => ({ progress_percentage: 0, amount_raised: 0, goal: 0, is_funded: false }))
+                ]);
+
+                // Transform contract data to match frontend expectations
+                return {
+                  id: i.toString(),
+                  title: campaign.name,
+                  description: campaign.description,
+                  goal: campaign.goal,
+                  raised: microStxToStx(campaign.amount_raised),
+                  backers: Array.isArray(funders) ? funders.length : 0,
+                  milestonesCount: campaign.milestones ? campaign.milestones.length : 0,
+                  completedMilestones: campaign.milestones ?
+                    campaign.milestones.filter((m: any) => m.status === 'completed').length : 0,
+                  category: campaign.category,
+                  endDate: campaign.status === 'completed' ? 'Completed' : 'Active',
+                  status: campaign.status
+                };
               })
               .catch(err => {
                 console.error(`Error loading campaign ${i}:`, err);
@@ -106,98 +73,18 @@ const CampaignList = () => {
         setCampaigns(validCampaigns);
       } catch (error) {
         console.error('Error loading campaigns:', error);
-        // Fallback to mock data on error
-        setCampaigns(mockCampaigns);
+        // Display empty state instead of mock data
+        setCampaigns([]);
       } finally {
         setLoading(false);
       }
     };
 
     loadCampaigns();
-  }, [readContract]);
+  }, [getCampaignCount, getCampaign, getCampaignFunders, getCampaignProgress]);
 
-  const mockCampaigns = [
-    {
-      id: "1",
-      title: "Decentralized Social Media Platform",
-      description: "Building a censorship-resistant social network powered by blockchain technology for global communities.",
-      goal: 50000,
-      raised: 32500,
-      backers: 127,
-      milestonesCount: 4,
-      completedMilestones: 2,
-      category: "Technology",
-      endDate: "30 days",
-      status: "funding" as const
-    },
-    {
-      id: "2",
-      title: "Sustainable Agriculture Initiative",
-      description: "Funding innovative farming techniques to reduce environmental impact and increase crop yields.",
-      goal: 25000,
-      raised: 18750,
-      backers: 89,
-      milestonesCount: 3,
-      completedMilestones: 1,
-      category: "Environment",
-      endDate: "45 days",
-      status: "milestone-voting" as const
-    },
-    {
-      id: "3",
-      title: "Open Source Education Platform",
-      description: "Creating free educational resources for underserved communities worldwide with localized content.",
-      goal: 75000,
-      raised: 75000,
-      backers: 203,
-      milestonesCount: 5,
-      completedMilestones: 5,
-      category: "Education",
-      endDate: "Completed",
-      status: "completed" as const
-    },
-    {
-      id: "4",
-      title: "Medical Research Database",
-      description: "Developing an open-access database for medical research to accelerate drug discovery processes.",
-      goal: 100000,
-      raised: 67000,
-      backers: 156,
-      milestonesCount: 6,
-      completedMilestones: 3,
-      category: "Healthcare",
-      endDate: "60 days",
-      status: "funding" as const
-    },
-    {
-      id: "5",
-      title: "Climate Change Monitoring System",
-      description: "IoT-based system for real-time climate data collection and analysis across multiple regions.",
-      goal: 80000,
-      raised: 52000,
-      backers: 134,
-      milestonesCount: 4,
-      completedMilestones: 2,
-      category: "Environment",
-      endDate: "90 days",
-      status: "milestone-voting" as const
-    },
-    {
-      id: "6",
-      title: "Blockchain Voting System",
-      description: "Secure, transparent, and verifiable voting system built on blockchain technology.",
-      goal: 120000,
-      raised: 89000,
-      backers: 298,
-      milestonesCount: 5,
-      completedMilestones: 3,
-      category: "Technology",
-      endDate: "75 days",
-      status: "funding" as const
-    }
-  ];
-
-  const displayCampaigns = campaigns.length > 0 ? campaigns : mockCampaigns;
+  // Use only blockchain data - no mock data fallback
+  const displayCampaigns = campaigns;
 
   const categories = ["all", "Technology", "Environment", "Education", "Healthcare", "Art", "Social"];
   const statuses = ["all", "funding", "milestone-voting", "completed"];

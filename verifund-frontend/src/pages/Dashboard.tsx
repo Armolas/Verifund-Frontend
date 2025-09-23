@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
@@ -7,78 +8,130 @@ import { PlusCircle, Wallet, TrendingUp, CheckCircle, Clock } from "lucide-react
 import { Link } from "react-router-dom";
 import Navbar from "@/components/Navbar";
 import CampaignCard from "@/components/CampaignCard";
+import { useContract } from "@/hooks/use-contract";
+import { microStxToStx } from "@/lib/contract-utils";
 
 const Dashboard = () => {
-  const userStats = {
-    totalRaised: 125000,
-    totalBacked: 45000,
-    activeCampaigns: 3,
-    completedCampaigns: 2,
-    backedCampaigns: 12
-  };
+  const [userStats, setUserStats] = useState({
+    totalRaised: 0,
+    totalBacked: 0,
+    activeCampaigns: 0,
+    completedCampaigns: 0,
+    backedCampaigns: 0
+  });
+  const [createdCampaigns, setCreatedCampaigns] = useState([]);
+  const [backedCampaigns, setBackedCampaigns] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  const createdCampaigns = [
-    {
-      id: "1",
-      title: "Decentralized Social Media Platform",
-      description: "Building a censorship-resistant social network",
-      goal: 50000,
-      raised: 32500,
-      backers: 127,
-      milestonesCount: 4,
-      completedMilestones: 2,
-      category: "Technology",
-      endDate: "30 days",
-      status: "funding" as const
-    },
-    {
-      id: "2",
-      title: "AI-Powered Learning Assistant",
-      description: "Personalized education through artificial intelligence",
-      goal: 75000,
-      raised: 67500,
-      backers: 203,
-      milestonesCount: 5,
-      completedMilestones: 4,
-      category: "Education",
-      endDate: "15 days",
-      status: "milestone-voting" as const
-    }
-  ];
+  const { getCampaignCount, getCampaign, getCampaignFunders, getCampaignProgress } = useContract();
 
-  const backedCampaigns = [
-    {
-      id: "3",
-      title: "Sustainable Agriculture Initiative",
-      description: "Funding innovative farming techniques",
-      goal: 25000,
-      raised: 18750,
-      backers: 89,
-      milestonesCount: 3,
-      completedMilestones: 1,
-      category: "Environment",
-      endDate: "45 days",
-      status: "milestone-voting" as const
-    },
-    {
-      id: "4",
-      title: "Open Source Education Platform",
-      description: "Creating free educational resources",
-      goal: 30000,
-      raised: 30000,
-      backers: 156,
-      milestonesCount: 4,
-      completedMilestones: 4,
-      category: "Education",
-      endDate: "Completed",
-      status: "completed" as const
-    }
-  ];
+  // Load dashboard data from blockchain
+  useEffect(() => {
+    const loadDashboardData = async () => {
+      try {
+        setLoading(true);
+
+        // Get total campaign count
+        const totalCampaigns = await getCampaignCount();
+
+        let allCreatedCampaigns = [];
+        let allBackedCampaigns = [];
+        let totalRaisedAmount = 0;
+        let totalBackedAmount = 0;
+        let activeCampaignsCount = 0;
+        let completedCampaignsCount = 0;
+
+        // Load all campaigns to categorize them
+        const campaignPromises = [];
+        for (let i = 0; i < totalCampaigns; i++) {
+          campaignPromises.push(
+            getCampaign(i)
+              .then(async campaign => {
+                // Get additional data
+                const [funders, progress] = await Promise.all([
+                  getCampaignFunders(i).catch(() => []),
+                  getCampaignProgress(i).catch(() => ({ progress_percentage: 0, amount_raised: 0, goal: 0, is_funded: false }))
+                ]);
+
+                // Transform campaign data
+                const transformedCampaign = {
+                  id: i.toString(),
+                  title: campaign.name,
+                  description: campaign.description,
+                  goal: campaign.goal,
+                  raised: microStxToStx(campaign.amount_raised),
+                  backers: Array.isArray(funders) ? funders.length : 0,
+                  milestonesCount: campaign.milestones ? campaign.milestones.length : 0,
+                  completedMilestones: campaign.milestones ?
+                    campaign.milestones.filter((m: any) => m.status === 'completed').length : 0,
+                  category: campaign.category,
+                  endDate: campaign.status === 'completed' ? 'Completed' : 'Active',
+                  status: campaign.status
+                };
+
+                // Update stats
+                totalRaisedAmount += transformedCampaign.raised;
+
+                if (campaign.status === 'funding' || campaign.status === 'milestone-voting') {
+                  activeCampaignsCount++;
+                } else if (campaign.status === 'completed') {
+                  completedCampaignsCount++;
+                }
+
+                // For simplicity, we'll show all campaigns as "created" since we don't have user ownership tracking
+                // In a real app, you'd check if the current user is the owner or a funder
+                allCreatedCampaigns.push(transformedCampaign);
+
+                return transformedCampaign;
+              })
+              .catch(err => {
+                console.error(`Error loading campaign ${i}:`, err);
+                return null;
+              })
+          );
+        }
+
+        await Promise.all(campaignPromises);
+
+        // Update state
+        setUserStats({
+          totalRaised: totalRaisedAmount,
+          totalBacked: totalBackedAmount, // TODO: Calculate based on user's contributions
+          activeCampaigns: activeCampaignsCount,
+          completedCampaigns: completedCampaignsCount,
+          backedCampaigns: 0 // TODO: Calculate based on user's backed campaigns
+        });
+
+        setCreatedCampaigns(allCreatedCampaigns);
+        setBackedCampaigns(allBackedCampaigns); // For now, empty - would need user-specific data
+
+      } catch (error) {
+        console.error('Error loading dashboard data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadDashboardData();
+  }, [getCampaignCount, getCampaign, getCampaignFunders, getCampaignProgress]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen gradient-bg">
+        <Navbar />
+        <div className="pt-24 px-4 pb-16">
+          <div className="max-w-7xl mx-auto text-center">
+            <div className="text-verifund-light-accent text-xl">Loading dashboard...</div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen gradient-bg">
       <Navbar />
-      
+
       <div className="pt-24 px-4 pb-16">
         <div className="max-w-7xl mx-auto">
           {/* Header */}
