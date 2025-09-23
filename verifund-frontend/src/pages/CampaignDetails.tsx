@@ -74,6 +74,34 @@ const CampaignDetails = () => {
             return Number(value) || 0;
           };
           
+          // Process milestones
+          console.log('Raw milestones data:', rawCampaignData.milestones);
+          let processedMilestones = [];
+          
+          if (rawCampaignData.milestones && rawCampaignData.milestones.value && Array.isArray(rawCampaignData.milestones.value)) {
+            processedMilestones = rawCampaignData.milestones.value.map((milestone: any, index: number) => {
+              console.log(`Processing milestone ${index}:`, milestone);
+              
+              // Extract milestone data from Clarity tuple structure
+              const milestoneData = milestone.value || milestone;
+              
+              return {
+                id: index,
+                name: extractString(milestoneData.name),
+                title: extractString(milestoneData.name),
+                description: extractString(milestoneData.description),
+                amount: extractNumber(milestoneData.amount),
+                status: extractString(milestoneData.status) || 'pending',
+                votesFor: extractNumber(milestoneData.votes_for) || 0,
+                votesAgainst: extractNumber(milestoneData.votes_against) || 0,
+                voteDeadline: extractNumber(milestoneData.vote_deadline) || 0,
+                completionDate: milestoneData.completion_date?.value || null
+              };
+            });
+          }
+          
+          console.log('Processed milestones:', processedMilestones);
+          
           // Transform contract data to match frontend expectations
           const campaignData = {
             id: id,
@@ -87,7 +115,7 @@ const CampaignDetails = () => {
             category: extractString(rawCampaignData.category),
             owner: extractString(rawCampaignData.owner),
             proposal_link: extractString(rawCampaignData.proposal_link),
-            milestones: Array.isArray(rawCampaignData.milestones) ? rawCampaignData.milestones : [],
+            milestones: processedMilestones,
             backers: 0 // Would need separate contract call
           };
           
@@ -166,6 +194,7 @@ const CampaignDetails = () => {
   };
 
   // Use real campaign data if available, otherwise use mock data
+  // Use campaign data from blockchain, fallback to mock campaign only if no campaign loaded
   const displayCampaign = campaign || mockCampaign;
   const progressPercentage = (displayCampaign.amount_raised || displayCampaign.raised) / (displayCampaign.goal) * 100;
   
@@ -365,7 +394,8 @@ const CampaignDetails = () => {
                 </TabsList>
 
                 <TabsContent value="milestones" className="space-y-4">
-                  {(Array.isArray(displayCampaign.milestones) ? displayCampaign.milestones : []).map((milestone: any, index: number) => (
+                  {(Array.isArray(displayCampaign.milestones) && displayCampaign.milestones.length > 0) ? 
+                    displayCampaign.milestones.map((milestone: any, index: number) => (
                     <Card key={milestone.id} className="glass-card">
                       <CardHeader>
                         <div className="flex items-center justify-between">
@@ -479,7 +509,17 @@ const CampaignDetails = () => {
                         )}
                       </CardContent>
                     </Card>
-                  ))}
+                  )) : (
+                    <Card className="glass-card">
+                      <CardContent className="p-8 text-center">
+                        <AlertTriangle className="w-12 h-12 text-verifund-neutral-gray mx-auto mb-4" />
+                        <h3 className="text-lg font-semibold text-verifund-light-accent mb-2">No milestones defined</h3>
+                        <p className="text-verifund-neutral-gray">
+                          This campaign doesn't have any milestones set up yet.
+                        </p>
+                      </CardContent>
+                    </Card>
+                  )}
                 </TabsContent>
 
                 <TabsContent value="updates">
