@@ -7,8 +7,7 @@ import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useContract } from "../hooks/use-contract";
-import { Cl } from '@stacks/transactions';
-import { cvToValue } from '@stacks/transactions';
+import { microStxToStx } from "@/lib/contract-utils";
 import { 
   Calendar, 
   Users, 
@@ -28,175 +27,82 @@ const CampaignDetails = () => {
   const [campaign, setCampaign] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const { callContract, readContract } = useContract();
+  const { getCampaign, getCampaignFunders, getCampaignProgress, fundCampaign } = useContract();
 
   // Load campaign data from blockchain
-  useEffect(() => {
-    const loadCampaign = async () => {
+  const loadCampaign = async () => {
       try {
         setLoading(true);
-        const campaignResult = await readContract('get_campaign', [Cl.uint(parseInt(id))]);
-        
-        if (campaignResult.type === 'ok') {
-          const rawCampaignData = cvToValue(campaignResult.value);
-          console.log('Raw campaign data:', rawCampaignData);
-          
-          // Safely extract string values, handling potential Clarity objects
-          const extractString = (value: any) => {
-            if (typeof value === 'string') return value;
-            if (value && typeof value === 'object') {
-              if (value.type === 'buffer') {
-                return new TextDecoder().decode(new Uint8Array(value.value));
-              }
-              if (value.type === 'ascii' || value.type === 'utf8') {
-                return value.data || value.value || '';
-              }
-              if (value.type === 'uint' || value.type === 'int') {
-                return String(value.value || 0);
-              }
-              // For any other object, try to extract a meaningful value
-              if (value.value !== undefined) {
-                return String(value.value);
-              }
-              if (value.data !== undefined) {
-                return String(value.data);
-              }
-            }
-            return String(value || '');
-          };
-          
-          const extractNumber = (value: any) => {
-            if (typeof value === 'number') return value;
-            if (typeof value === 'bigint') return Number(value);
-            if (value && typeof value === 'object' && value.type === 'uint') {
-              return Number(value.value);
-            }
-            return Number(value) || 0;
-          };
-          
-          // Process milestones
-          console.log('Raw milestones data:', rawCampaignData.milestones);
-          let processedMilestones = [];
-          
-          if (rawCampaignData.milestones && rawCampaignData.milestones.value && Array.isArray(rawCampaignData.milestones.value)) {
-            processedMilestones = rawCampaignData.milestones.value.map((milestone: any, index: number) => {
-              console.log(`Processing milestone ${index}:`, milestone);
-              
-              // Extract milestone data from Clarity tuple structure
-              const milestoneData = milestone.value || milestone;
-              
-              return {
-                id: index,
-                name: extractString(milestoneData.name),
-                title: extractString(milestoneData.name),
-                description: extractString(milestoneData.description),
-                amount: extractNumber(milestoneData.amount),
-                status: extractString(milestoneData.status) || 'pending',
-                votesFor: extractNumber(milestoneData.votes_for) || 0,
-                votesAgainst: extractNumber(milestoneData.votes_against) || 0,
-                voteDeadline: extractNumber(milestoneData.vote_deadline) || 0,
-                completionDate: milestoneData.completion_date?.value || null
-              };
-            });
-          }
-          
-          console.log('Processed milestones:', processedMilestones);
-          
-          // Transform contract data to match frontend expectations
-          const campaignData = {
-            id: id,
-            name: extractString(rawCampaignData.name),
-            title: extractString(rawCampaignData.name),
-            description: extractString(rawCampaignData.description),
-            goal: extractNumber(rawCampaignData.goal),
-            amount_raised: extractNumber(rawCampaignData.amount_raised),
-            raised: extractNumber(rawCampaignData.amount_raised),
-            status: extractString(rawCampaignData.status),
-            category: extractString(rawCampaignData.category),
-            owner: extractString(rawCampaignData.owner),
-            proposal_link: extractString(rawCampaignData.proposal_link),
-            milestones: processedMilestones,
-            backers: 0 // Would need separate contract call
-          };
-          
-          console.log('Processed campaign data:', campaignData);
-          setCampaign(campaignData);
-        } else {
-          setError('Campaign not found');
-        }
+        setError(null);
+
+        const campaignId = parseInt(id);
+
+        // Load campaign data and additional info in parallel
+        const [campaignData, funders, progress] = await Promise.all([
+          getCampaign(campaignId),
+          getCampaignFunders(campaignId).catch(() => []),
+          getCampaignProgress(campaignId).catch(() => ({ progress_percentage: 0, amount_raised: 0, goal: 0, is_funded: false }))
+        ]);
+
+        console.log('Campaign data:', campaignData);
+        console.log('Funders:', funders);
+        console.log('Progress:', progress);
+
+        // Transform milestones to match frontend expectations
+        const processedMilestones = campaignData.milestones ? campaignData.milestones.map((milestone: any, index: number) => ({
+          id: index,
+          name: milestone.name,
+          title: milestone.name,
+          description: milestone.description,
+          amount: milestone.amount,
+          status: milestone.status,
+          votesFor: milestone.votes_for || 0,
+          votesAgainst: milestone.votes_against || 0,
+          voteDeadline: milestone.vote_deadline || 0,
+          completionDate: milestone.completion_date || null
+        })) : [];
+
+        // Transform contract data to match frontend expectations
+        const transformedCampaign = {
+          id: id,
+          name: campaignData.name,
+          title: campaignData.name,
+          description: campaignData.description,
+          goal: campaignData.goal,
+          amount_raised: campaignData.amount_raised,
+          raised: microStxToStx(campaignData.amount_raised),
+          status: campaignData.status,
+          category: campaignData.category,
+          owner: campaignData.owner,
+          proposal_link: campaignData.proposal_link || '',
+          milestones: processedMilestones,
+          backers: Array.isArray(funders) ? funders.length : 0,
+          progress: progress
+        };
+
+        console.log('Transformed campaign:', transformedCampaign);
+        setCampaign(transformedCampaign);
       } catch (err) {
         console.error('Error loading campaign:', err);
-        setError('Failed to load campaign');
+        setError('Failed to load campaign. Campaign may not exist.');
       } finally {
         setLoading(false);
       }
     };
 
+  useEffect(() => {
     if (id) {
       loadCampaign();
     }
-  }, [id, readContract]);
+  }, [id]);
 
-  // Mock campaign data for fallback - in real app, this would come from blockchain/API
-  const mockCampaign = {
-    id: "1",
-    title: "Decentralized Social Media Platform",
-    description: "Building a censorship-resistant social network powered by blockchain technology that gives users full control over their data and content. Our platform will feature decentralized identity management, encrypted messaging, and community governance mechanisms.",
-    goal: 50000,
-    raised: 32500,
-    backers: 127,
-    endDate: "2024-07-15",
-    category: "Technology",
-    status: "funding",
-    creator: "0x123...abc",
-    proposalLink: "https://github.com/example/proposal",
-    milestones: [
-      {
-        id: 1,
-        title: "Platform Architecture & Design",
-        description: "Complete system architecture design and UI/UX mockups",
-        amount: 12500,
-        status: "completed",
-        votesFor: 89,
-        votesAgainst: 3,
-        completedAt: "2024-01-15"
-      },
-      {
-        id: 2,
-        title: "Core Backend Development",
-        description: "Develop user authentication, posting system, and basic API endpoints",
-        amount: 15000,
-        status: "completed",
-        votesFor: 94,
-        votesAgainst: 1,
-        completedAt: "2024-03-20"
-      },
-      {
-        id: 3,
-        title: "Frontend Implementation",
-        description: "Build responsive web application with real-time features",
-        amount: 12500,
-        status: "voting",
-        votesFor: 45,
-        votesAgainst: 8,
-        voteDeadline: "2024-06-20"
-      },
-      {
-        id: 4,
-        title: "Testing & Launch",
-        description: "Comprehensive testing, security audit, and mainnet deployment",
-        amount: 10000,
-        status: "pending",
-        votesFor: 0,
-        votesAgainst: 0
-      }
-    ]
-  };
+  // Only display real blockchain data - no mock data fallback
+  if (!campaign && !loading && !error) {
+    setError('Campaign not found');
+  }
 
-  // Use real campaign data if available, otherwise use mock data
-  // Use campaign data from blockchain, fallback to mock campaign only if no campaign loaded
-  const displayCampaign = campaign || mockCampaign;
-  const progressPercentage = (displayCampaign.amount_raised || displayCampaign.raised) / (displayCampaign.goal) * 100;
+  // Calculate progress using properly converted values
+  const progressPercentage = campaign ? (campaign.raised / campaign.goal) * 100 : 0;
   
   if (loading) {
     return (
@@ -211,7 +117,7 @@ const CampaignDetails = () => {
     );
   }
   
-  if (error) {
+  if (error || !campaign) {
     return (
       <div className="min-h-screen gradient-bg">
         <Navbar />
@@ -227,21 +133,19 @@ const CampaignDetails = () => {
   const handleContribute = async () => {
     try {
       console.log(`Contributing ${contributionAmount} STX to campaign ${id}`);
-      const amount = parseFloat(contributionAmount) * 1000000; // Convert to microSTX
-      
-      const response = await callContract({
-        functionName: 'fund_campaign',
-        functionArgs: [
-          Cl.uint(parseInt(id)),
-          Cl.uint(amount)
-        ]
+      const amount = parseFloat(contributionAmount);
+
+      const response = await fundCampaign({
+        campaign_id: parseInt(id),
+        amount: amount
       });
-      
+
       console.log('Contribution successful:', response);
       alert('Contribution successful!');
       setContributionAmount('');
-      // Reload campaign data
-      window.location.reload();
+
+      // Reload campaign data to show updated amounts
+      loadCampaign();
     } catch (error) {
       console.error('Contribution failed:', error);
       alert('Contribution failed. Please try again.');
@@ -350,23 +254,23 @@ const CampaignDetails = () => {
                 <CardHeader>
                   <div className="flex justify-between items-start mb-4">
                     <Badge variant="outline" className="text-verifund-mid-tone border-verifund-mid-tone">
-                      {displayCampaign.category || 'Technology'}
+                      {campaign.category || 'Technology'}
                     </Badge>
                     <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30">
-                      {displayCampaign.status || 'Funding'}
+                      {campaign.status || 'Funding'}
                     </Badge>
                   </div>
                   <CardTitle className="text-3xl text-verifund-light-accent mb-4">
-                    {displayCampaign.name || displayCampaign.title}
+                    {campaign.name || campaign.title}
                   </CardTitle>
                   <p className="text-verifund-neutral-gray text-lg leading-relaxed">
-                    {displayCampaign.description}
+                    {campaign.description}
                   </p>
                   
-                  {(displayCampaign.proposal_link || displayCampaign.proposalLink) && (
+                  {(campaign.proposal_link || campaign.proposalLink) && (
                     <div className="pt-4">
                       <a 
-                        href={displayCampaign.proposal_link || displayCampaign.proposalLink}
+                        href={campaign.proposal_link || campaign.proposalLink}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="inline-flex items-center text-verifund-mid-tone hover:text-verifund-light-accent transition-colors"
@@ -394,8 +298,8 @@ const CampaignDetails = () => {
                 </TabsList>
 
                 <TabsContent value="milestones" className="space-y-4">
-                  {(Array.isArray(displayCampaign.milestones) && displayCampaign.milestones.length > 0) ? 
-                    displayCampaign.milestones.map((milestone: any, index: number) => (
+                  {(Array.isArray(campaign.milestones) && campaign.milestones.length > 0) ? 
+                    campaign.milestones.map((milestone: any, index: number) => (
                     <Card key={milestone.id} className="glass-card">
                       <CardHeader>
                         <div className="flex items-center justify-between">
@@ -444,7 +348,7 @@ const CampaignDetails = () => {
                           </div>
                         )}
                         
-                        {milestone.status === 'voting' && displayCampaign.owner && (
+                        {milestone.status === 'voting' && campaign.owner && (
                           <div className="mb-4">
                             <Button 
                               onClick={() => handleWithdraw(index)}
@@ -555,10 +459,10 @@ const CampaignDetails = () => {
                 <CardContent className="p-6 space-y-6">
                   <div className="text-center">
                     <h3 className="text-3xl font-bold text-verifund-light-accent mb-2">
-                      ${((displayCampaign.amount_raised || displayCampaign.raised || 0) / 1000000).toLocaleString()} STX
+                      ${((campaign.amount_raised || campaign.raised || 0) / 1000000).toLocaleString()} STX
                     </h3>
                     <p className="text-verifund-neutral-gray">
-                      raised of ${(displayCampaign.goal).toLocaleString()} STX goal
+                      raised of ${(campaign.goal).toLocaleString()} STX goal
                     </p>
                   </div>
                   
@@ -566,11 +470,11 @@ const CampaignDetails = () => {
                   
                   <div className="grid grid-cols-2 gap-4 text-center">
                     <div>
-                      <p className="text-2xl font-bold text-verifund-light-accent">{displayCampaign.backers || 0}</p>
+                      <p className="text-2xl font-bold text-verifund-light-accent">{campaign.backers || 0}</p>
                       <p className="text-verifund-neutral-gray text-sm">backers</p>
                     </div>
                     <div>
-                      <p className="text-2xl font-bold text-verifund-light-accent">{displayCampaign.status || 'Active'}</p>
+                      <p className="text-2xl font-bold text-verifund-light-accent">{campaign.status || 'Active'}</p>
                       <p className="text-verifund-neutral-gray text-sm">status</p>
                     </div>
                   </div>
@@ -620,7 +524,12 @@ const CampaignDetails = () => {
                       <span className="text-white font-semibold">0x</span>
                     </div>
                     <div>
-                      <p className="text-verifund-light-accent font-medium">{displayCampaign.owner || displayCampaign.creator || 'Unknown'}</p>
+                      <p className="text-verifund-light-accent font-medium break-all">
+                        {campaign.owner ?
+                          `${campaign.owner.slice(0, 6)}...${campaign.owner.slice(-4)}` :
+                          'Unknown'
+                        }
+                      </p>
                       <p className="text-verifund-neutral-gray text-sm">Campaign Creator</p>
                     </div>
                   </div>
