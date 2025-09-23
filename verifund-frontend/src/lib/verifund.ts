@@ -1,16 +1,23 @@
 
+// Re-export types from the contract types file for backwards compatibility
+export type {
+    Campaign as CampaignDetails,
+    Milestone,
+    CreateCampaignParams,
+    CampaignStatus,
+    MilestoneStatus,
+    VoteType,
+    CampaignProgress,
+    MilestoneApprovals,
+    FunderVote
+} from '@/types/contract';
 
-export type CampaignDetails = {
-    name: string;
-    description: string;
-    goal: number;
-    amount_raised: number;
-    balance: number;
-    owner: string;
-    milestones: [{
-        name: string;
-        description: string;
-        amount: number;
-    }]
-    proposal_link: string;
-}
+// Re-export utilities
+export {
+    formatStxAmount,
+    calculateProgress,
+    microStxToStx,
+    stxToMicroStx,
+    validateCampaignParams,
+    parseContractError
+} from '@/lib/contract-utils';
